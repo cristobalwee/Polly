@@ -1,15 +1,34 @@
 import { Platform } from 'react-native';
-import { Tabs } from 'expo-router';
-import { useTheme } from 'tamagui';
+import { Redirect, Tabs } from 'expo-router';
+import { Spinner, useTheme, YStack } from 'tamagui';
+import { useAuthStore } from '../../stores/auth';
 
 /**
- * Authenticated shell. The four destinations render as a bottom tab bar on
- * native and as a top nav bar on web (React Navigation's `tabBarPosition`),
- * so every platform exposes the same navigation.
+ * Authenticated shell — and the app's auth gate.
+ *
+ *  - While the startup session check runs, render a splash (don't flash the
+ *    sign-in screen at a user who turns out to be signed in).
+ *  - With no session, redirect to `/sign-in`.
+ *  - Otherwise render the four tabs: a bottom tab bar on native, a top nav bar
+ *    on web, so every platform exposes the same navigation.
  */
 export default function AppLayout() {
   const theme = useTheme();
   const isWeb = Platform.OS === 'web';
+  const isHydrating = useAuthStore((s) => s.isHydrating);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+
+  if (isHydrating) {
+    return (
+      <YStack flex={1} bg="$background" ai="center" jc="center">
+        <Spinner color="$accent" size="large" />
+      </YStack>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Redirect href="/sign-in" />;
+  }
 
   return (
     <Tabs
