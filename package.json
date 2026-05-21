@@ -1,0 +1,23 @@
+{
+  "name": "polly",
+  "version": "0.1.0",
+  "private": true,
+  "description": "polly — a cross-platform prediction-market trade journal",
+  "packageManager": "pnpm@9.15.4",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --if-present -r dev",
+    "dev:api": "pnpm --filter api dev",
+    "dev:mobile": "pnpm --filter mobile dev",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "eslint ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "eslint": "^9.0.0",
+    "typescript": "~5.9.0",
+    "typescript-eslint": "^8.59.4"
+  }
+}

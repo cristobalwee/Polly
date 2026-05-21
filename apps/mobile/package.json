@@ -1,0 +1,37 @@
+{
+  "name": "mobile",
+  "version": "0.1.0",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "dev": "expo start",
+    "dev:web": "expo start --web",
+    "dev:ios": "expo start --ios",
+    "dev:android": "expo start --android",
+    "prebuild": "expo prebuild",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@expo/metro-runtime": "~55.0.11",
+    "@polly/shared": "workspace:*",
+    "@tamagui/config": "2.0.0-rc.42",
+    "expo": "~55.0.25",
+    "expo-constants": "~55.0.16",
+    "expo-linking": "~55.0.15",
+    "expo-router": "~55.0.15",
+    "expo-status-bar": "~55.0.6",
+    "expo-system-ui": "~55.0.18",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "react-native": "0.83.6",
+    "react-native-safe-area-context": "~5.6.2",
+    "react-native-screens": "~4.23.0",
+    "react-native-web": "^0.21.0",
+    "tamagui": "2.0.0-rc.42"
+  },
+  "devDependencies": {
+    "@tamagui/babel-plugin": "2.0.0-rc.42",
+    "@tamagui/metro-plugin": "2.0.0-rc.42",
+    "@types/react": "~19.2.10"
+  }
+}
