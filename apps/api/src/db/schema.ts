@@ -70,9 +70,159 @@ export const userKalshiCredentials = pgTable('user_kalshi_credentials', {
 
   /** `'unvalidated' | 'valid' | 'invalid'` — last result of a Kalshi test call. */
   validationStatus: text('validation_status').notNull().default('unvalidated'),
+
+  /**
+   * Cursor for incremental fill ingestion: the latest `executed_at` we've seen
+   * from Kalshi for this user. Subsequent polls ask Kalshi only for fills after
+   * this timestamp, so the steady state is one tiny request even for an active
+   * trader. `null` means "next poll is a full backfill".
+   */
+  lastFillExecutedAt: timestamp('last_fill_executed_at', { withTimezone: true }),
+
+  /** Timestamp of the most recent successful private-data poll for this user. */
+  lastPolledAt: timestamp('last_polled_at', { withTimezone: true }),
 });
 
 export type UserKalshiCredentialRow = typeof userKalshiCredentials.$inferSelect;
+
+/* -------------------------------------------------------------------------- */
+/*  Per-user trading data — fills, positions, orders, balance                  */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * One executed fill on Kalshi, mirrored locally. Each row is one buy or sell
+ * for one side (yes/no) at one price, so a Kalshi "order" that crossed at
+ * three levels lands here as three trade rows.
+ *
+ * `realizedPnlCents` is populated only on closing trades (sells that reduce a
+ * position): the FIFO matcher computes it against the lots the position was
+ * built from. Opening trades carry `null`. See `trades/realized-pnl.ts`.
+ *
+ * The unique `(user_id, kalshi_trade_id)` index makes the trades poller
+ * idempotent — re-ingesting the same fill upserts in place rather than
+ * duplicating.
+ */
+export const trades = pgTable(
+  'trades',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    kalshiTradeId: text('kalshi_trade_id').notNull(),
+    ticker: text('ticker')
+      .notNull()
+      .references(() => markets.ticker, { onDelete: 'restrict' }),
+    /** `'yes'` or `'no'` — which side of the binary contract. */
+    side: text('side').notNull(),
+    /** `'buy'` or `'sell'`. */
+    action: text('action').notNull(),
+    count: integer('count').notNull(),
+    priceCents: integer('price_cents').notNull(),
+    feeCents: integer('fee_cents').notNull().default(0),
+    /** Realized P&L cents for closing trades only; `null` for opening trades. */
+    realizedPnlCents: integer('realized_pnl_cents'),
+    executedAt: timestamp('executed_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex('trades_user_kalshi_trade_id_unique').on(t.userId, t.kalshiTradeId),
+    index('trades_user_executed_at_idx').on(t.userId, t.executedAt.desc()),
+    index('trades_user_ticker_executed_at_idx').on(t.userId, t.ticker, t.executedAt),
+  ],
+);
+
+export type TradeRow = typeof trades.$inferSelect;
+export type TradeInsert = typeof trades.$inferInsert;
+
+/**
+ * A user's open position on one side of one market. We mirror Kalshi's
+ * position payload verbatim — Kalshi is the source of truth for the count and
+ * average cost; we compute unrealized P&L on read from the current market mid
+ * rather than trusting any stored value.
+ *
+ * `unrealizedPnlCents` is stored for convenience but is only as fresh as the
+ * last poll — the API endpoint recomputes it from the current market price.
+ */
+export const positions = pgTable(
+  'positions',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    ticker: text('ticker')
+      .notNull()
+      .references(() => markets.ticker, { onDelete: 'restrict' }),
+    /** `'yes'` or `'no'`. */
+    side: text('side').notNull(),
+    count: integer('count').notNull(),
+    averageCostCents: integer('average_cost_cents').notNull(),
+    marketExposureCents: integer('market_exposure_cents').notNull(),
+    realizedPnlCents: integer('realized_pnl_cents').notNull().default(0),
+    /** Stale snapshot — endpoints recompute against the latest market mid. */
+    unrealizedPnlCents: integer('unrealized_pnl_cents').notNull().default(0),
+    lastUpdatedAt: timestamp('last_updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex('positions_user_ticker_side_unique').on(t.userId, t.ticker, t.side),
+    index('positions_user_idx').on(t.userId),
+  ],
+);
+
+export type PositionRow = typeof positions.$inferSelect;
+export type PositionInsert = typeof positions.$inferInsert;
+
+/**
+ * A user's pending limit order on Kalshi. Filled orders fall out of the orders
+ * endpoint and survive only as `trades` rows; this table only carries resting
+ * orders. Mirrored verbatim from Kalshi — we never place orders for v0.
+ */
+export const orders = pgTable(
+  'orders',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    kalshiOrderId: text('kalshi_order_id').notNull(),
+    ticker: text('ticker')
+      .notNull()
+      .references(() => markets.ticker, { onDelete: 'restrict' }),
+    side: text('side').notNull(),
+    action: text('action').notNull(),
+    count: integer('count').notNull(),
+    remainingCount: integer('remaining_count').notNull(),
+    priceCents: integer('price_cents').notNull(),
+    /** Kalshi's order status string — `resting` | `cancelled` | `executed` | … */
+    status: text('status').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+    lastUpdatedAt: timestamp('last_updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex('orders_user_kalshi_order_id_unique').on(t.userId, t.kalshiOrderId),
+    index('orders_user_status_idx').on(t.userId, t.status),
+  ],
+);
+
+export type OrderRow = typeof orders.$inferSelect;
+export type OrderInsert = typeof orders.$inferInsert;
+
+/**
+ * One row per user — their current Kalshi cash balance in cents. `bigint`
+ * because Kalshi balances are reported in cents and could in theory exceed a
+ * 32-bit integer (a million dollars is already 10⁸ cents).
+ */
+export const userBalances = pgTable('user_balances', {
+  userId: text('user_id')
+    .primaryKey()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  balanceCents: bigint('balance_cents', { mode: 'number' }).notNull().default(0),
+  lastUpdatedAt: timestamp('last_updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export type UserBalanceRow = typeof userBalances.$inferSelect;
+export type UserBalanceInsert = typeof userBalances.$inferInsert;
 
 /* -------------------------------------------------------------------------- */
 /*  Markets — public, shared-across-all-users Kalshi data                      */

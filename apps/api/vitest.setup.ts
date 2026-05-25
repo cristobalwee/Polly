@@ -14,5 +14,6 @@ process.env.BETTER_AUTH_SECRET ??= randomBytes(32).toString('base64url');
 process.env.BETTER_AUTH_URL ??= 'http://localhost:3001';
 process.env.ENCRYPTION_MASTER_KEY ??= randomBytes(32).toString('hex');
 process.env.WEB_ORIGIN ??= 'http://localhost:8081';
-// Tests own the poller's lifecycle — never auto-start it.
+// Tests own each poller's lifecycle — never auto-start them.
 process.env.MARKETS_POLLER_ENABLED = 'false';
+process.env.TRADES_POLLER_ENABLED = 'false';

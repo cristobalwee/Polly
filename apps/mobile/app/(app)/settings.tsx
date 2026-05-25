@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
   CreateKalshiCredentialSchema,
@@ -22,6 +22,7 @@ import {
 import { FormField } from '../../components/FormField';
 import { useAuthActions } from '../../hooks/useAuthActions';
 import { useKalshiCredential } from '../../hooks/useKalshiCredential';
+import { useManualSync } from '../../lib/portfolio';
 import { useAuthStore } from '../../stores/auth';
 
 /** Human-readable label + Tamagui color token per validation status. */
@@ -121,6 +122,72 @@ function ConnectedKalshi() {
           </Button.Text>
         </Button>
       </XStack>
+
+      <ManualSyncSection />
+    </YStack>
+  );
+}
+
+/**
+ * Manual-sync trigger — pulls fills/positions/balance for the current user on
+ * demand. Toast-style: the inline status line below the button surfaces the
+ * result of the most recent sync, then fades out after a few seconds.
+ */
+function ManualSyncSection() {
+  const sync = useManualSync();
+  const [toast, setToast] = useState<{ tone: 'ok' | 'err'; message: string } | null>(null);
+
+  // Auto-dismiss the toast after 5 seconds so the section settles back to
+  // showing just the button — same UX as a real toast without an extra dep.
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 5000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  const onSync = async () => {
+    try {
+      const result = await sync.mutateAsync();
+      if (result.status === 'ok') {
+        setToast({
+          tone: 'ok',
+          message: `Synced — ${result.fillsIngested} new fill(s), ${result.positionsSynced} position(s).`,
+        });
+      } else {
+        setToast({
+          tone: 'err',
+          message: result.error ?? 'Sync failed',
+        });
+      }
+    } catch (err) {
+      setToast({
+        tone: 'err',
+        message: err instanceof Error ? err.message : 'Sync failed',
+      });
+    }
+  };
+
+  return (
+    <YStack gap="$2" mt="$2">
+      <Separator />
+      <Text fontSize="$3" color="$placeholderColor">
+        Manually pull your latest balance, positions, and fills from Kalshi.
+      </Text>
+      <Button
+        bg="$accent"
+        disabled={sync.isPending}
+        icon={sync.isPending ? <Spinner color="white" /> : undefined}
+        onPress={() => void onSync()}
+      >
+        <Button.Text color="white" fontWeight="700">
+          {sync.isPending ? 'Syncing…' : 'Sync now'}
+        </Button.Text>
+      </Button>
+      {toast ? (
+        <Text fontSize="$2" color={toast.tone === 'ok' ? '$green10' : '$red10'}>
+          {toast.message}
+        </Text>
+      ) : null}
     </YStack>
   );
 }

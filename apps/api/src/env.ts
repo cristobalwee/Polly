@@ -47,6 +47,16 @@ const EnvSchema = z.object({
     .enum(['true', 'false'])
     .default('true')
     .transform((v) => v === 'true'),
+
+  /**
+   * Whether the per-user `TradesPoller` runs inside this process. Only meaningful
+   * when `MARKETS_POLLER_ENABLED=true` (the trades poller piggybacks on the
+   * shared public client + shutdown handlers). On by default.
+   */
+  TRADES_POLLER_ENABLED: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((v) => v === 'true'),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

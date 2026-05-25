@@ -50,6 +50,9 @@ export default function AppLayout() {
       {/* Market detail lives under (app) so it inherits the auth gate, but is
           hidden from the tab bar — it's reached from a card tap. */}
       <Tabs.Screen name="market/[ticker]" options={{ href: null }} />
+      {/* Trades list + detail — reached from the dashboard's "View all" link. */}
+      <Tabs.Screen name="trades/index" options={{ href: null }} />
+      <Tabs.Screen name="trades/[id]" options={{ href: null }} />
     </Tabs>
   );
 }

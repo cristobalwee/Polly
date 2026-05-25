@@ -6,8 +6,12 @@ import { auth } from './auth';
 import { env } from './env';
 import { KalshiPublicClient } from './kalshi/public-client';
 import { MarketsPoller } from './markets/poller';
+import { setTradesPoller } from './portfolio/poller-handle';
 import { credentialsRoute } from './routes/credentials';
 import { marketsRoute } from './routes/markets';
+import { portfolioRoute } from './routes/portfolio';
+import { tradesRoute } from './routes/trades';
+import { TradesPoller } from './trades/poller';
 
 const app = new Hono();
 
@@ -51,27 +55,44 @@ app.route('/credentials', credentialsRoute);
 /** Public market data — discover, search, detail (all routes require a session). */
 app.route('/markets', marketsRoute);
 
+/** Per-user portfolio (summary, positions, orders). */
+app.route('/portfolio', portfolioRoute);
+
+/** Trade history + manual sync trigger. */
+app.route('/trades', tradesRoute);
+
 serve({ fetch: app.fetch, port: env.PORT }, (info) => {
   console.log(`🟢 polly api listening on http://localhost:${info.port}`);
 });
 
 /**
- * Markets poller. For v0 it runs in-process as `setInterval` loops — kept
- * separate from the HTTP server so it can later be lifted into its own worker.
- * `MARKETS_POLLER_ENABLED=false` disables it (tests, one-off scripts).
+ * Background pollers. Both run in-process as `setInterval` loops — kept
+ * separate from the HTTP server so they can later be lifted into their own
+ * workers. `MARKETS_POLLER_ENABLED=false` / `TRADES_POLLER_ENABLED=false`
+ * disable them (tests, one-off scripts).
  */
 if (env.MARKETS_POLLER_ENABLED) {
-  const poller = new MarketsPoller({
-    client: new KalshiPublicClient({ environment: env.KALSHI_ENVIRONMENT }),
-  });
-  poller.start().catch((err) => {
+  const publicClient = new KalshiPublicClient({ environment: env.KALSHI_ENVIRONMENT });
+  const marketsPoller = new MarketsPoller({ client: publicClient });
+  marketsPoller.start().catch((err) => {
     console.error('✗ markets poller failed to start:', err);
   });
+
+  let tradesPoller: TradesPoller | null = null;
+  if (env.TRADES_POLLER_ENABLED) {
+    tradesPoller = new TradesPoller({ publicClient });
+    setTradesPoller(tradesPoller);
+    tradesPoller.start().catch((err) => {
+      console.error('✗ trades poller failed to start:', err);
+    });
+  }
 
   // Stop the loops cleanly on shutdown so dev restarts don't leak timers.
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.on(signal, () => {
-      poller.stop();
+      marketsPoller.stop();
+      tradesPoller?.stop();
+      setTradesPoller(null);
       process.exit(0);
     });
   }

@@ -15,6 +15,13 @@
       "when": 1779416463380,
       "tag": "0001_mute_scarlet_spider",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1779671471764,
+      "tag": "0002_familiar_siren",
+      "breakpoints": true
     }
   ]
 }
