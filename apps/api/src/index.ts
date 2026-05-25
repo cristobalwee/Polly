@@ -4,7 +4,10 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { auth } from './auth';
 import { env } from './env';
+import { KalshiPublicClient } from './kalshi/public-client';
+import { MarketsPoller } from './markets/poller';
 import { credentialsRoute } from './routes/credentials';
+import { marketsRoute } from './routes/markets';
 
 const app = new Hono();
 
@@ -45,6 +48,31 @@ app.on(['GET', 'POST'], '/api/auth/*', (c) => auth.handler(c.req.raw));
 /** Kalshi credential management (all routes require a session). */
 app.route('/credentials', credentialsRoute);
 
+/** Public market data — discover, search, detail (all routes require a session). */
+app.route('/markets', marketsRoute);
+
 serve({ fetch: app.fetch, port: env.PORT }, (info) => {
   console.log(`🟢 polly api listening on http://localhost:${info.port}`);
 });
+
+/**
+ * Markets poller. For v0 it runs in-process as `setInterval` loops — kept
+ * separate from the HTTP server so it can later be lifted into its own worker.
+ * `MARKETS_POLLER_ENABLED=false` disables it (tests, one-off scripts).
+ */
+if (env.MARKETS_POLLER_ENABLED) {
+  const poller = new MarketsPoller({
+    client: new KalshiPublicClient({ environment: env.KALSHI_ENVIRONMENT }),
+  });
+  poller.start().catch((err) => {
+    console.error('✗ markets poller failed to start:', err);
+  });
+
+  // Stop the loops cleanly on shutdown so dev restarts don't leak timers.
+  for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+    process.on(signal, () => {
+      poller.stop();
+      process.exit(0);
+    });
+  }
+}

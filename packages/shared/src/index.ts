@@ -67,3 +67,109 @@ export const KalshiCredentialResponseSchema = z.object({
   credential: KalshiCredentialMetadataSchema.nullable(),
 });
 export type KalshiCredentialResponse = z.infer<typeof KalshiCredentialResponseSchema>;
+
+/* -------------------------------------------------------------------------- */
+/*  Markets                                                                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * polly's editorial taxonomy. Every market is bucketed into exactly one of
+ * these — Kalshi's native categories are mapped onto them by the
+ * `market_categories_mapping` table, and anything without a mapping lands in
+ * `Other`. The clients use this enum to drive the category filter.
+ */
+export const UnifiedCategorySchema = z.enum([
+  'Weather',
+  'Economics',
+  'Politics',
+  'Sports',
+  'Crypto',
+  'Culture',
+  'Other',
+]);
+export type UnifiedCategory = z.infer<typeof UnifiedCategorySchema>;
+
+/** Every unified category, in display order — handy for rendering filters. */
+export const UNIFIED_CATEGORIES = UnifiedCategorySchema.options;
+
+/**
+ * Lifecycle of a market, normalised away from Kalshi's vocabulary:
+ *  - `active` — open for trading (Kalshi `open`).
+ *  - `closed` — trading halted, not yet settled (Kalshi `closed`).
+ *  - `resolved` — settled with a known outcome (Kalshi `settled`).
+ *  - `unopened` — scheduled but not yet open (Kalshi `unopened`).
+ */
+export const MarketStatusSchema = z.enum(['active', 'closed', 'resolved', 'unopened']);
+export type MarketStatus = z.infer<typeof MarketStatusSchema>;
+
+/**
+ * A single point on a market's price history — one candlestick's worth.
+ * `yesMidCents` is the mid of the YES bid/ask in cents (0–100).
+ */
+export const PricePointSchema = z.object({
+  timestamp: z.string().datetime(),
+  yesMidCents: z.number().int(),
+  volumeCents: z.number().int().nonnegative(),
+});
+export type PricePoint = z.infer<typeof PricePointSchema>;
+
+/**
+ * The card-sized projection of a market — everything the Markets grid and the
+ * discover sections need, and nothing they don't. Prices are integer cents.
+ */
+export const MarketSummarySchema = z.object({
+  ticker: z.string(),
+  title: z.string(),
+  subtitle: z.string().nullable(),
+  category: UnifiedCategorySchema,
+  subcategory: z.string().nullable(),
+  yesSubTitle: z.string().nullable(),
+  noSubTitle: z.string().nullable(),
+  status: MarketStatusSchema,
+  resolutionDate: z.string().datetime().nullable(),
+  yesBid: z.number().int().nullable(),
+  yesAsk: z.number().int().nullable(),
+  noBid: z.number().int().nullable(),
+  noAsk: z.number().int().nullable(),
+  volume24hCents: z.number().int().nonnegative(),
+  totalVolumeCents: z.number().int().nonnegative(),
+  /** Recent YES-mid prices, oldest→newest, for a card sparkline. May be empty. */
+  sparkline: z.array(z.number().int()),
+  lastUpdatedAt: z.string().datetime(),
+});
+export type MarketSummary = z.infer<typeof MarketSummarySchema>;
+
+/** Full market detail — a summary plus its recent price history. */
+export const MarketDetailSchema = MarketSummarySchema.extend({
+  priceHistory: z.array(PricePointSchema),
+});
+export type MarketDetail = z.infer<typeof MarketDetailSchema>;
+
+/**
+ * `GET /markets/discover` — three editorial sections, up to six markets each.
+ *  - `trending` — highest 24h volume, lightly biased to the user's categories.
+ *  - `resolvingSoon` — active markets resolving within seven days.
+ *  - `forYou` — markets in categories the user has traded (empty until the
+ *    per-user trade tables land next session).
+ */
+export const DiscoverResponseSchema = z.object({
+  trending: z.array(MarketSummarySchema),
+  resolvingSoon: z.array(MarketSummarySchema),
+  forYou: z.array(MarketSummarySchema),
+});
+export type DiscoverResponse = z.infer<typeof DiscoverResponseSchema>;
+
+/** Sort orders accepted by `GET /markets/search`. */
+export const MarketSortSchema = z.enum([
+  'volume',
+  'resolution',
+  'newest',
+]);
+export type MarketSort = z.infer<typeof MarketSortSchema>;
+
+/** `GET /markets/search` — a page of results plus an opaque next-page cursor. */
+export const MarketSearchResponseSchema = z.object({
+  markets: z.array(MarketSummarySchema),
+  nextCursor: z.string().nullable(),
+});
+export type MarketSearchResponse = z.infer<typeof MarketSearchResponseSchema>;

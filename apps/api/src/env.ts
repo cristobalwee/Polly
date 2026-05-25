@@ -32,6 +32,21 @@ const EnvSchema = z.object({
   WEB_ORIGIN: z.string().url().default('http://localhost:8081'),
 
   PORT: z.coerce.number().int().positive().default(3001),
+
+  /**
+   * Which Kalshi deployment the public market-data client and poller talk to.
+   * `demo` by default — public endpoints need no credentials either way.
+   */
+  KALSHI_ENVIRONMENT: z.enum(['demo', 'production']).default('demo'),
+
+  /**
+   * Whether the `MarketsPoller` runs inside this process. On by default; set
+   * to `false` for tests or one-off scripts that should not poll Kalshi.
+   */
+  MARKETS_POLLER_ENABLED: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((v) => v === 'true'),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

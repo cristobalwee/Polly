@@ -21,4 +21,15 @@ export default tseslint.config(
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
+  {
+    rules: {
+      // Standard convention: a leading `_` marks a deliberately-unused
+      // identifier (interface placeholders, stubs that will gain a real
+      // implementation later).
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' },
+      ],
+    },
+  },
 );

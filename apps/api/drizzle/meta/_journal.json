@@ -8,6 +8,13 @@
       "when": 1779336441734,
       "tag": "0000_curious_cable",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1779416463380,
+      "tag": "0001_mute_scarlet_spider",
+      "breakpoints": true
     }
   ]
 }
